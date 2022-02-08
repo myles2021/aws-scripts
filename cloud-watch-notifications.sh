@@ -18,7 +18,7 @@ aws sns subscribe --topic-arn (your topic arn) --protocol email --notification-e
 # Create your alarm
 aws cloudwatch put-metric-alarm --alarm-name sample-alarm-topic-myles --alarm-description "Myles Sample Alarm when CPU exceeds 70 %" --metric-name CPUUtilization --namespace AWS/EC2 --statistic Average --period 300 --threshold 70 --unit Percent --comparison-operator GreaterThanThreshold --dimensions "Name=InstanceId,Value=(your instance id)" --evaluation-periods 2 --alarm-actions (your topic arn)
 
-# A new instance has been made, ssh into the ec2 and run the following
+# A new instance has been made, ssh into the ec2 and run the following (when ssh'ing into it, the 'user' will be 'ec2 user' rather than 'ubuntu' like the other one)
 sudo yum update -y
 sudo amazon-linux-extras install epel -y
 sudo yum install stress -y
