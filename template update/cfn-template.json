@@ -258,7 +258,10 @@
         ],
         "Subnets": [
           {
-            "Ref": "PublicSubnet"
+            "Ref": "PublicSubnet0"
+          },
+          {
+            "Ref": "PublicSubnet1"
           }
         ]
       }
