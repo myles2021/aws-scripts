@@ -6,6 +6,26 @@
       "Description": "The Availability Zone to use for the simple VPC.",
       "AllowedPattern": "^(?!us-west-2d).*$",
       "ConstraintDescription": "Availability zone must not be us-west-2d."
+    },
+    "NumberOfNodes": {
+      "Type": "Number",
+      "Description": "The number of EC2 nodes the service should have.",
+      "Default": 2
+    },
+    "NodeSize": {
+      "Type": "String",
+      "Description": "The type of node to use for your system",
+      "Default": "m3.medium"
+    },
+    "RunNumber": {
+      "Type": "Number",
+      "Description": "Used to force the ASG's nodes' UserData to update.",
+      "Default": 1
+    },
+    "TableThroughput": {
+      "Type": "Number",
+      "Description": "The number of queries per second the table should support.",
+      "Default": 10
     }
   },
   "Resources": {
@@ -37,14 +57,12 @@
       "Type": "AWS::EC2::InternetGateway"
     },
     "NATInstance": {
-      "DependsOn": ["GatewayAttachmentToVPC"],
       "Type": "AWS::EC2::Instance",
       "Properties": {
         "AvailabilityZone": { "Ref": "VPCAZ" },
         "ImageId": "IMAGE-ID",
         "InstanceType": "m3.medium",
         "SecurityGroupIds": [{ "Ref": "InstancesToNATSecurityGroup" }],
-        "SourceDestCheck": false,
         "SubnetId": { "Ref": "PublicSubnet" }
       }
     },
@@ -144,10 +162,91 @@
       }
     },
 
-    "LoadBalancer": {},
-    "InstancesGroup": {},
-    "InstancesConfig": {},
-    "DynamoTable": {},
+    "LoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "Listeners": [
+          {
+            "InstancePort": 8888,
+            "InstanceProtocol": "HTTP",
+            "LoadBalancerPort": 80,
+            "Protocol": "HTTP"
+          }
+        ],
+        "Scheme": "internet-facing",
+        "SecurityGroups": [{ "Ref": "InternetToLBSecurityGroup" }],
+        "Subnets": [{ "Ref": "PublicSubnet" }]
+      }
+    },
+    "InstancesGroup": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "Cooldown": 60,
+        "DesiredCapacity": { "Ref": "NumberOfNodes" },
+        "HealthCheckGracePeriod": 30,
+        "HealthCheckType": "EC2",
+        "LaunchConfigurationName": { "Ref": "InstancesConfig" },
+        "LoadBalancerNames": [{ "Ref": "LoadBalancer" }],
+        "MaxSize": { "Ref": "NumberOfNodes" },
+        "MetricsCollection": [{ "Granularity": "1Minute" }],
+        "MinSize": { "Ref": "NumberOfNodes" },
+        "VPCZoneIdentifier": [{ "Ref": "PrivateSubnet" }]
+      },
+      "UpdatePolicy": {
+        "AutoScalingRollingUpdate": {
+          "MaxBatchSize": 1,
+          "MinInstancesInService": 1,
+          "PauseTime": 30,
+          "WaitOnResourceSignals": false
+        }
+      }
+    },
+    "InstancesConfig": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Properties": {
+          "AssociatePublicIpAddress": false,
+          "IamInstanceProfile": { "Ref": "DynamoAccessInstanceProfile" },
+          "ImageId": "IMAGE-ID",
+          "InstanceMonitoring": true,
+          "InstanceType": { "Ref": "NodeSize" },
+          "SecurityGroups": [ { "Ref": "LBToInstancesSecurityGroup" } ],
+          "UserData": {
+            "Fn::Base64": {
+              "Fn::Join": [
+                "\n",
+                [
+                  "#!/bin/bash",
+                  { "Fn::Join": [ "", [ "echo 'Running number ", { "Ref": "RunNumber" }, "' > /tmp/runnum.log" ] ] },
+                  "yum install --enablerepo=epel -y git nodejs npm",
+                  "npm config set registry http://registry.npmjs.org/",
+                  "npm install -g forever@0.14.1",
+                  "git clone https://github.com/cloudacademy/dynamo-demo",
+                  { "Fn::Join": [  "", [ "export AWS_REGION=", { "Ref": "AWS::Region" } ] ] },
+                  "cd dynamo-demo",
+                  { "Fn::Join": [ "", [ "forever start server.js --port 8888 --table ", { "Ref": "DynamoTableForTodos" } ] ] }
+                ]
+              ]
+            }
+        }
+      }
+    },
+    "DynamoTableForTodos": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "AttributeDefinitions": [{
+            "AttributeName": "id",
+            "AttributeType": "S"
+        }],
+        "KeySchema": [{
+            "AttributeName": "id",
+            "KeyType": "HASH"
+        }],
+        "ProvisionedThroughput": {
+            "ReadCapacityUnits": { "Ref": "TableThroughput" },
+            "WriteCapacityUnits": { "Ref": "TableThroughput" }
+        }
+      }
+    },
 
     "DynamoAccessRole": {},
     "DynamoAccessInstanceProfile": {},
