@@ -1,3 +1,4 @@
+
 {
   "Description": "My Cloud Academy Labs 2-Tier Scalable API Template",
   "Parameters": {
@@ -26,20 +27,27 @@
       "Type": "Number",
       "Description": "The number of queries per second the table should support.",
       "Default": 10
+    },
+    "VPCClassBOctet": {
+      "Type": "Number",
+      "Description": "The Class B block to use for the VPC (0-255).",
+      "MaxValue": 255,
+      "MinValue": 0,
+      "Default": 0
     }
   },
   "Resources": {
     "VPC": {
       "Type": "AWS::EC2::VPC",
       "Properties": {
-        "CidrBlock": "10.0.0.0/16"
+        "CidrBlock": { "Fn::Join": [ "", [ "10.", { "Ref": "VPCClassBOctet" }, ".0.0/16" ] ] }
       }
     },
     "PublicSubnet": {
       "Type": "AWS::EC2::Subnet",
       "Properties": {
         "AvailabilityZone": { "Ref": "VPCAZ" },
-        "CidrBlock": "10.0.0.0/24",
+        "CidrBlock": { "Fn::Join": [ "", [ "10.", { "Ref": "VPCClassBOctet" }, ".0.0/24" ] ] },
         "MapPublicIpOnLaunch": true,
         "VpcId": { "Ref": "VPC" }
       }
@@ -48,7 +56,7 @@
       "Type": "AWS::EC2::Subnet",
       "Properties": {
         "AvailabilityZone": { "Ref": "VPCAZ" },
-        "CidrBlock": "10.0.1.0/24",
+        "CidrBlock": { "Fn::Join": [ "", [ "10.", { "Ref": "VPCClassBOctet" }, ".1.0/24" ] ] },
         "VpcId": { "Ref": "VPC" }
       }
     },
@@ -57,12 +65,16 @@
       "Type": "AWS::EC2::InternetGateway"
     },
     "NATInstance": {
+      "DependsOn": ["GatewayAttachmentToVPC"],
       "Type": "AWS::EC2::Instance",
       "Properties": {
         "AvailabilityZone": { "Ref": "VPCAZ" },
-        "ImageId": "IMAGE-ID",
+        "ImageId": {
+          "Fn::FindInMap": ["AWSNATAMIs", { "Ref": "AWS::Region" }, "AMI"]
+        },
         "InstanceType": "m3.medium",
         "SecurityGroupIds": [{ "Ref": "InstancesToNATSecurityGroup" }],
+        "SourceDestCheck": false,
         "SubnetId": { "Ref": "PublicSubnet" }
       }
     },
@@ -206,7 +218,9 @@
       "Properties": {
         "AssociatePublicIpAddress": false,
         "IamInstanceProfile": { "Ref": "DynamoAccessInstanceProfile" },
-        "ImageId": "IMAGE-ID",
+        "ImageId": {
+          "Fn::FindInMap": ["AWSLinuxAMIs", { "Ref": "AWS::Region" }, "AMI"]
+        },
         "InstanceMonitoring": true,
         "InstanceType": { "Ref": "NodeSize" },
         "SecurityGroups": [{ "Ref": "LBToInstancesSecurityGroup" }],
@@ -252,6 +266,7 @@
         }
       }
     },
+
     "DynamoTableForTodos": {
       "Type": "AWS::DynamoDB::Table",
       "Properties": {
@@ -273,7 +288,6 @@
         }
       }
     },
-
     "DynamoAccessRole": {
       "Type": "AWS::IAM::Role",
       "Properties": {
@@ -345,6 +359,45 @@
         ],
         "VpcId": { "Ref": "VPC" }
       }
+    }
+  },
+  "Outputs": {
+    "ELBDNS": {
+      "Description": "The DNS for the ELB / our app.",
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "http://",
+            { "Fn::GetAtt": ["LoadBalancer", "DNSName"] },
+            "/index.html"
+          ]
+        ]
+      }
+    }
+  },
+  "Mappings": {
+    "AWSNATAMIs": {
+      "us-east-1": { "AMI": "ami-303b1458" },
+      "us-west-2": { "AMI": "ami-69ae8259" },
+      "us-west-1": { "AMI": "ami-7da94839" },
+      "eu-west-1": { "AMI": "ami-6975eb1e" },
+      "eu-central-1": { "AMI": "ami-46073a5b" },
+      "ap-southeast-1": { "AMI": "ami-b49dace6" },
+      "ap-northeast-1": { "AMI": "ami-03cf3903" },
+      "ap-southeast-2": { "AMI": "ami-e7ee9edd" },
+      "sa-east-1": { "AMI": "ami-fbfa41e6" }
+    },
+    "AWSLinuxAMIs": {
+      "us-east-1": { "AMI": "ami-1ecae776" },
+      "us-west-2": { "AMI": "ami-e7527ed7" },
+      "us-west-1": { "AMI": "ami-d114f295" },
+      "eu-west-1": { "AMI": "ami-a10897d6" },
+      "eu-central-1": { "AMI": "ami-a8221fb5" },
+      "ap-northeast-1": { "AMI": "ami-cbf90ecb" },
+      "ap-southeast-1": { "AMI": "ami-68d8e93a" },
+      "ap-southeast-2": { "AMI": "ami-fd9cecc7" },
+      "sa-east-1": { "AMI": "ami-b52890a8" }
     }
   }
 }
