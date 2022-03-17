@@ -204,56 +204,148 @@
     "InstancesConfig": {
       "Type": "AWS::AutoScaling::LaunchConfiguration",
       "Properties": {
-          "AssociatePublicIpAddress": false,
-          "IamInstanceProfile": { "Ref": "DynamoAccessInstanceProfile" },
-          "ImageId": "IMAGE-ID",
-          "InstanceMonitoring": true,
-          "InstanceType": { "Ref": "NodeSize" },
-          "SecurityGroups": [ { "Ref": "LBToInstancesSecurityGroup" } ],
-          "UserData": {
-            "Fn::Base64": {
-              "Fn::Join": [
-                "\n",
-                [
-                  "#!/bin/bash",
-                  { "Fn::Join": [ "", [ "echo 'Running number ", { "Ref": "RunNumber" }, "' > /tmp/runnum.log" ] ] },
-                  "yum install --enablerepo=epel -y git nodejs npm",
-                  "npm config set registry http://registry.npmjs.org/",
-                  "npm install -g forever@0.14.1",
-                  "git clone https://github.com/cloudacademy/dynamo-demo",
-                  { "Fn::Join": [  "", [ "export AWS_REGION=", { "Ref": "AWS::Region" } ] ] },
-                  "cd dynamo-demo",
-                  { "Fn::Join": [ "", [ "forever start server.js --port 8888 --table ", { "Ref": "DynamoTableForTodos" } ] ] }
-                ]
+        "AssociatePublicIpAddress": false,
+        "IamInstanceProfile": { "Ref": "DynamoAccessInstanceProfile" },
+        "ImageId": "IMAGE-ID",
+        "InstanceMonitoring": true,
+        "InstanceType": { "Ref": "NodeSize" },
+        "SecurityGroups": [{ "Ref": "LBToInstancesSecurityGroup" }],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "\n",
+              [
+                "#!/bin/bash",
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "echo 'Running number ",
+                      { "Ref": "RunNumber" },
+                      "' > /tmp/runnum.log"
+                    ]
+                  ]
+                },
+                "yum install --enablerepo=epel -y git nodejs npm",
+                "npm config set registry http://registry.npmjs.org/",
+                "npm install -g forever@0.14.1",
+                "git clone https://github.com/cloudacademy/dynamo-demo",
+                {
+                  "Fn::Join": [
+                    "",
+                    ["export AWS_REGION=", { "Ref": "AWS::Region" }]
+                  ]
+                },
+                "cd dynamo-demo",
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "forever start server.js --port 8888 --table ",
+                      { "Ref": "DynamoTableForTodos" }
+                    ]
+                  ]
+                }
               ]
-            }
+            ]
+          }
         }
       }
     },
     "DynamoTableForTodos": {
       "Type": "AWS::DynamoDB::Table",
       "Properties": {
-        "AttributeDefinitions": [{
+        "AttributeDefinitions": [
+          {
             "AttributeName": "id",
             "AttributeType": "S"
-        }],
-        "KeySchema": [{
+          }
+        ],
+        "KeySchema": [
+          {
             "AttributeName": "id",
             "KeyType": "HASH"
-        }],
+          }
+        ],
         "ProvisionedThroughput": {
-            "ReadCapacityUnits": { "Ref": "TableThroughput" },
-            "WriteCapacityUnits": { "Ref": "TableThroughput" }
+          "ReadCapacityUnits": { "Ref": "TableThroughput" },
+          "WriteCapacityUnits": { "Ref": "TableThroughput" }
         }
       }
     },
 
-    "DynamoAccessRole": {},
-    "DynamoAccessInstanceProfile": {},
+    "DynamoAccessRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": { "Service": ["ec2.amazonaws.com"] },
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+        ],
+        "Path": "/"
+      }
+    },
+    "DynamoAccessInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [{ "Ref": "DynamoAccessRole" }]
+      }
+    },
 
-    "LBToInstancesSecurityGroup": {},
-    "InternetToLBSecurityGroup": {},
-    "InstancesToNATSecurityGroup": {}
+    "LBToInstancesSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Load balancer to instances",
+        "SecurityGroupIngress": [
+          {
+            "FromPort": 8888,
+            "IpProtocol": "TCP",
+            "SourceSecurityGroupId": { "Ref": "InternetToLBSecurityGroup" },
+            "ToPort": 8888
+          }
+        ],
+        "VpcId": { "Ref": "VPC" }
+      }
+    },
+    "InternetToLBSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Internet to load balancer",
+        "SecurityGroupIngress": [
+          {
+            "FromPort": 80,
+            "IpProtocol": "TCP",
+            "CidrIp": "0.0.0.0/0",
+            "ToPort": 80
+          }
+        ],
+        "VpcId": { "Ref": "VPC" }
+      }
+    },
+    "InstancesToNATSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Instances to NAT instance",
+        "SecurityGroupIngress": [
+          {
+            "FromPort": 0,
+            "IpProtocol": -1,
+            "SourceSecurityGroupId": { "Ref": "LBToInstancesSecurityGroup" },
+            "ToPort": 65535
+          }
+        ],
+        "VpcId": { "Ref": "VPC" }
+      }
+    }
   }
 }
 
