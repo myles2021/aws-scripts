@@ -1,0 +1,8 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+    JsonServerResource:
+        Type: 'Custom::JsonServerResource'
+        Properties:
+            ServiceToken: <LAMBDA_FUNCTION_ARN>
+            StackName: !Ref AWS::StackName
+            StackId: !Ref AWS::StackId
